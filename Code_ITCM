@@ -1,0 +1,352 @@
+library(tidyverse)
+library(googlesheets4)
+
+# save the url/link of the spreadsheet we want to access
+url <- "https://docs.google.com/spreadsheets/d/1nMH9h1fE6WZO5bE-HrKOjReZqXr6c6pR6QTm1MOidEY/edit?usp=sharing"
+
+# upoading data
+googlesheets4::gs4_deauth() 
+
+# assigning responses to an object
+respostas_formulario <- read_sheet(url)
+
+
+# selected variables
+dados_completo <- respostas_formulario %>% 
+           select(4:27)
+
+
+# Building variables
+
+dados_renomeados <- dados_completo %>% 
+    rename(sex = "genero",                                                                                                                                                                                                                                  
+         years =  "idade",                                                                                                                                                                                                                            
+         schooling = "escolaridade",                                                                                                                                                                                                                  
+         job = "ocupacao",                                                                                                                                                                                                             
+         income = "renda",                                                                                                                                                                                                              
+         visitation = "numero de visitas",                                                                                                                                        
+         start = "municipio de partida",
+         modal = "transporte",                                                                                                                                                                                       
+         vehicle_with_engine = "tipo de combustivel",                                                                                                                                                
+         dist_stated = "distancia percorrida",                                                                                                                                                       
+         fuel_consumption = "consumo de combustivel",                                                                                                                                                                               
+         bus_ticket = "valor da passagem",                                                                                                                                                                      
+         deslocation_time = "tempo de deslocamento",                                                                                                                                                              
+         permanence = "tempo de permanencia",                                                                                                                                                                                    
+         cost_permanence = "custo da viagem",
+         reasons_trip = "visita a outro local") %>%  
+  select(1:15) %>% 
+  as_tibble()
+
+
+# CEAR DATA
+dados <- dados_renomeados %>% 
+   mutate(
+     dist_stated = str_extract_all(dist_stated, "\\d+\\.?\\d*"),
+     fuel_consumption = str_extract_all(dist_stated, "\\d+\\.?\\d*"),
+     cost_permanence = str_extract_all(dist_stated, "\\d+\\.?\\d*"),
+      start = str_extract_all(start, "^[^-]*")) 
+
+# adding state acronym 
+
+dados <- dados %>% 
+  mutate(uf = "GO") 
+
+# Selecting variables
+
+dados <- dados %>% 
+  select(sex, 
+         years,
+         schooling,
+         income, 
+         visitation, 
+         start,
+         deslocation_time,
+         permanence, 
+         cost_permanence,
+         fuel_consumption,
+         vehicle_with_engine,
+         uf)
+          
+# undoing variables in list
+
+dados <- dados %>% 
+  unnest(c(
+           start, 
+           cost_permanence)
+         )
+
+# Adjusting distances between cities
+
+dados %>% 
+  select(start) %>% 
+  unique()
+
+dados <- dados %>% 
+   mutate(distance = case_when(
+              start == "Anapolis" ~ "58.5",
+              start == "Gameleira de Goias" ~ "27.5",
+              start == "Silvania" ~ "8",
+              start == "Munici?pio de Silvania " ~ "8",
+              start == "Goiania" ~ "73.1",
+              start == "Jussara" ~ "27.5",
+              start == "Leopoldo de Bulhoes" ~ "11.8",
+              start == "Leopoldo de Bulhoes" ~ "11.8",
+              start == "Moro na fazenda, munici?pio de silvania" ~ "8",
+              start == "Formosa" ~ "274",
+              start == "Orizona" ~ "71",
+              start == "Brasi?lia" ~ "208",
+              start == "Distrito Federal" ~ "208",
+              start == "Vianopolis" ~ "27.2",
+              start == "Nenhum" ~ "0",
+              TRUE ~ "0",
+              
+              .default = as.character(start)
+            )
+            ) 
+
+
+# # adjusting content of the income variable
+
+dados %>% select(visitation) %>% unique()
+
+
+dados <- dados %>% 
+  mutate(income = case_when(
+    income == "mais de 5 salarios minimos" ~ "acima de 5",
+    income == "de 3 a 5 salarios minimos" ~ "acima de 3 ate 5",
+     income == "de 1 a 3 salarios minimos" ~ "acima de 1 ate 3",
+    income == "ate 1 salario minimo" ~ "ate 1",
+    TRUE ~ "0",
+    .default = as.character(income)
+  )
+  ) 
+
+
+dados <- dados %>%
+   mutate(visitation = case_when(
+    visitation == "Primeira vez" ~ "1",
+    visitation == "Nenhuma" ~ "0",
+    visitation == "nunca fui na flona" ~ "0",
+    visitation == "NULL" ~ "0",
+    .default = as.character(visitation)
+  )
+  )
+
+dados <- dados %>%
+  mutate(deslocation_time = case_when(
+    deslocation_time == "5 horas" ~ "300",
+    deslocation_time == "6 horas" ~ "360",
+    deslocation_time == "4 horas" ~ "240",
+    deslocation_time == "NULL" ~ "0",
+    deslocation_time == "30hs" ~ "0", # impossivel isso
+    deslocation_time == "Nunca fui" ~ "0",
+    deslocation_time == "2 horas" ~ "120",
+    deslocation_time == "cerca de 2 horas" ~ "105",
+    #    TRUE ~ "0",
+    .default = as.character(deslocation_time)
+  )
+  )
+
+
+
+# IMPORTANT NOTE
+
+# I chose to use dummy variables for income, education and age, because these
+# were originally in categorical format and, in my opinion, we could use them better
+# choosing to go via dummy coding (1 or 0)
+
+
+# doing income dummy variables
+
+dados <- dados %>% 
+  mutate(income_dummy = case_when(
+    income ==  "acima de 5" ~ 1,
+    income ==  "acima de 3 ate 5" ~ 1,
+    TRUE ~ 0
+  )
+  ) 
+
+# Dummy variable for schooling
+dados <- dados %>% 
+  mutate(schooling_dummy = case_when(
+    schooling == "Ensino completo" ~ 0,
+    schooling == "Ensino fundamental" ~ 0,
+    schooling == "Ensino medio incompleto" ~ 0,
+    schooling == "Graduacao incompleta" ~ 0,
+    schooling == "Sem escolaridade" ~ 0,
+    TRUE ~ 1
+    )
+  ) 
+
+
+# Criando variavel dummy para idade mais jovem 
+dados <- dados %>% 
+  mutate(years_dummy = case_when(
+    years == "19 a 35 anos" ~ 1,
+    years == "18 anos" ~ 1,
+    TRUE ~ 0
+  )
+  ) 
+
+ 
+# continuing with data manipulation
+dados_alterado <- 
+            dados %>%
+            mutate(years = as_factor(years),
+                   schooling = as_factor(schooling),
+                   income = as_factor(income),
+                   permanence = as_factor(permanence),
+                   sex = as_factor(sex)
+                   )
+
+dados_alterado$permanence <- factor(dados$permanence, 
+                      levels = c("mais de duas horas", 
+                                 "mais de uma hora a duas horas", 
+                                 "mais de meia hora ate uma hora", 
+                                 "ate meia hora"
+                                  ))
+
+
+
+
+dados_alterado$years <- factor(dados_alterado$years,
+                               levels = c("60 anos ou mais", 
+                                          "36 a 59 anos",   
+                                          "19 a 35 anos",
+                                          "18 anos"))
+
+
+dados_alterado$schooling <- factor(dados_alterado$schooling,
+                                   levels = c(
+                                     "Doutorado", "Doutorado incompleto", "Mestre", "Mestrado incompleto",
+                                     "Especializacao completa", "Especializacao incompleta", "Graduacao completa",
+                                     "Graduacao incompleta" , "Ensino completo", "Ensino medio incompleto"))
+
+dados_alterado$sex <- factor(dados_alterado$sex,
+                                   levels = c(
+                                     "Masculino","Feminino"))
+
+ 
+# converting variables to "numeric"
+dados_clean <- dados_alterado %>% 
+  mutate(visitation = as.numeric(visitation),
+         deslocation_time = as.numeric(deslocation_time),
+         cost_permanence = as.numeric(cost_permanence),
+         distance = as.numeric(distance))
+
+dados_clean <- dados_clean %>% 
+  filter(cost_permanence < 601)
+
+
+
+## creating variable transportation_expense
+
+# tidying dataset
+dados_clean$vehicle_with_engine <- ifelse(is.na(dados_clean$vehicle_with_engine), 
+                                           "Gasolina", dados_clean$vehicle_with_engine)
+
+# Set fuel prices
+
+dados_clean2 <- dados_clean %>%
+  mutate(fuel_price = case_when(
+    vehicle_with_engine == "Álcool" ~ 3.65,
+    vehicle_with_engine == "Diesel" ~ 6.18 ,
+    vehicle_with_engine == "Gasolina" ~ 5.87 ,
+    TRUE ~ NA
+  ))
+
+
+# creating travel expense variable
+dados_clean2 <- dados_clean2 %>% 
+  unnest(fuel_consumption) %>% # tirando do formato lista
+  mutate(fuel_consumption = as.numeric(fuel_consumption)) %>% 
+  mutate(gasto_viagem = fuel_price * fuel_consumption)
+
+# creating variable "cost_trip"
+dados_clean2 <- dados_clean2 %>% 
+                mutate(custo_viagem = gasto_viagem + cost_permanence)
+
+
+
+# Descriptive statistics (summary) of travel cost data
+summary(dados_clean2$custo_viagem)
+sd(dados_clean2$custo_viagem)
+
+
+#testing the models without dummy variables - income, age and education
+
+
+##### Linar Mode#######
+linear <- stats::glm(visitation ~ distance + deslocation_time + custo_viagem, dados_clean2, family = poisson(link = "log"))
+
+lin_log <- stats::glm(visitation ~ distance + deslocation_time + log(custo_viagem), dados_clean2, family = poisson(link = "log"))
+
+log_lin <- stats::glm(log(visitation) ~ distance + deslocation_time + custo_viagem, dados_clean2, family = poisson(link = "log"))
+
+log_log <- stats::glm(log(visitation) ~ distance + deslocation_time + log(custo_viagem), dados_clean2, family = poisson(link = "log"))
+
+# testing r mcfadden only for the model that seems best to me
+with(summary(lin_log), 1 - deviance/null.deviance) # 0,2911
+
+# Visualization all the models together
+library(modelsummary)
+modelsummary(list(linear, lin_log, log_lin, log_log))
+
+
+# test models with dummy variables 
+
+linear_d <- stats::glm(visitation ~ sex + schooling_dummy + years_dummy + income_dummy + 
+                        distance + custo_viagem, dados_clean2, 
+                      family = poisson(link = "log"))
+summary(linear_d)
+
+library(faraway)
+vif(linear_d)
+#evaluating the collinearity between the distance traveled and the travel time #Exclude the travel time 
+# from all models due to collinearity with the other variables
+
+
+lin_log_d <- stats::glm(visitation ~ sex + schooling_dummy + years_dummy + income_dummy + 
+                        distance + log(custo_viagem), dados_clean2, family = poisson(link = "log"))
+
+log_lin_d <- stats::glm(log(visitation) ~ sex + schooling_dummy + years_dummy + income_dummy + 
+                        distance + custo_viagem, dados_clean2, family = poisson(link = "log"))
+
+log_log_d <- stats::glm(log(visitation) ~ sex + schooling_dummy + years_dummy + income_dummy + 
+                        distance + log(custo_viagem), dados_clean2, family = poisson(link = "log"))
+
+
+# Viewing all models together
+library(modelsummary)
+modelsummary(list(linear_d, lin_log_d, log_lin_d, log_log_d), stars = T)
+
+
+# Calculating the pseudo-r
+
+library(modEvA)
+RsqGLM(model=linear_d)# sqPearson = 0.201
+RsqGLM(model=lin_log_d)# sqPearson = 0.214
+RsqGLM(model=log_lin_d)# sqPearson = 0.258
+RsqGLM(model=log_log_d)# sqPearson = 0.268
+
+
+# calculating the Durbin-Watson autocorrelation test
+
+#install.packages("car")
+library(car)
+
+durbinWatsonTest(linear_d)# DW = 1.39 P = 0.002
+durbinWatsonTest(lin_log_d)# DW = 1.35 P = 0
+durbinWatsonTest(log_lin_d)# DW = 1.38 P = 0
+durbinWatsonTest(log_log_d)# DW = 1.34   P = 0
+
+
+
+# Testing 
+with(summary(log_log_d), 1 - deviance/null.deviance)
+
+
+modelsummary(list(linear, lin_log, log_lin, log_log), stars = T)
+
+
